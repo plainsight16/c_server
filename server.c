@@ -19,7 +19,7 @@ int main(void){
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = 0;
-    hints.ai_flags = AI_PASSIVE;
+    hints.ai_flags = AI_PASSIVE; // use local host
     
     int status;
     int sock_fd, new_fd;
@@ -68,21 +68,27 @@ int main(void){
         if (message_size == -1){
             perror("receive error");
         }
+        FILE *file_d = fopen("index.html", "r");
         char *response;
         int sent_bytes;
         if (strncmp("GET", buff, 3) == 0){
             printf("Received a get request\n");
             response = "HTTP/1.1 200 OK\r\n"
             "Content-Type: text/html\r\n"
-            "Content-Length: 81\r\n"
-            "\r\n"
-            "<h1> hello</h1>\r\n";
-            int send_status;
-            if ((send_status = send(new_fd, response, strlen(response), 0)) == -1){
+            "\r\n";
+            int first_send_status, sec_send_status;
+            if ((first_send_status = send(new_fd, response, strlen(response), 0)) == -1){
                 perror("Send error");
-                return 2;
+                close(new_fd);
             };
-            printf("Sent bytes:%d\n", send_status);
+
+            char c;
+            while ((c = getc(file_d)) != EOF){
+                if ((sec_send_status = send(new_fd, &c, 1, 0)) == -1){
+                    perror("Send error");
+                    close(new_fd);
+                };
+            }
         }
         else{
             printf("ignored, come back with a get request\n");
