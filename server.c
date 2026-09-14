@@ -68,18 +68,28 @@ int main(void){
         if (message_size == -1){
             perror("receive error");
         }
-        char *response = "";
+        char *response;
         int sent_bytes;
         if (strncmp("GET", buff, 3) == 0){
             printf("Received a get request\n");
-            // if(sent_bytes = send(new_fd, response, strlen(response)) == -1){
-
-            // }
+            response = "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/html\r\n"
+            "Content-Length: 81\r\n"
+            "\r\n"
+            "<h1> hello</h1>\r\n";
+            int send_status;
+            if ((send_status = send(new_fd, response, strlen(response), 0)) == -1){
+                perror("Send error");
+                return 2;
+            };
+            printf("Sent bytes:%d\n", send_status);
         }
         else{
             printf("ignored, come back with a get request\n");
         }
+        close(new_fd);
+        
     }
-    
+    close(sock_fd);
 
 }
