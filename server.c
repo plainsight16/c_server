@@ -12,7 +12,7 @@ int main(void){
     //bind
     //listen
     //accept
-    struct addrinfo hints, *res;
+    struct addrinfo hints, *servinfo;
     struct sockaddr_storage their_addr;
     socklen_t addr_size;
     memset(&hints, 0, sizeof hints);
@@ -25,12 +25,12 @@ int main(void){
     int sock_fd, new_fd;
     int yes = 1;
 
-    if ((status = getaddrinfo(NULL, PORT,  &hints, &res)) != 0){
+    if ((status = getaddrinfo(NULL, PORT,  &hints, &servinfo)) != 0){
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
         exit(1);
     }
     
-    sock_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    sock_fd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
     if (sock_fd == -1){
         perror("Socket error");
         exit(1);
@@ -40,11 +40,12 @@ int main(void){
         perror("setsockopt");
         exit(1);
     }
-    if (bind(sock_fd, res->ai_addr, res->ai_addrlen) == -1){
+    if (bind(sock_fd, servinfo->ai_addr, servinfo->ai_addrlen) == -1){
         close(sock_fd);
         perror("Bind error");
         exit(1);
     }
+    freeaddrinfo(servinfo);
     listen(sock_fd, BACKLOG);
 
 
