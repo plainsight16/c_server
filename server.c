@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <sys/socket.h>
 
 #define PORT "8080"
 #define BACKLOG 20
@@ -12,7 +13,8 @@ int main(void){
     //bind
     //listen
     //accept
-    struct addrinfo hints, *servinfo;
+    struct addrinfo hints, *servinfo; // hints gives getaddrinfo what specs I would like in my servinfo struct
+    // which begs the question, why not just have one then?
     struct sockaddr_storage their_addr;
     socklen_t addr_size;
     memset(&hints, 0, sizeof hints);
@@ -46,7 +48,12 @@ int main(void){
         exit(1);
     }
     freeaddrinfo(servinfo);
-    listen(sock_fd, BACKLOG);
+
+    if(listen(sock_fd, BACKLOG) == - 1){
+        perror("listen");
+        close(sock_fd);
+        exit(1);
+    }
 
 
     
@@ -55,7 +62,6 @@ int main(void){
         printf("Waiting for request...\n");
         new_fd = accept(sock_fd, (struct sockaddr *)&their_addr, &addr_size);
         if(new_fd == -1){
-            close(new_fd);
             perror("Accept");
             continue;
         }
@@ -70,6 +76,11 @@ int main(void){
             perror("receive error");
         }
         FILE *file_d = fopen("index.html", "r");
+        if (file_d == NULL){
+            perror("file error");
+            close(new_fd);
+            continue;
+        }
         char *response;
         int sent_bytes;
         if (strncmp("GET", buff, 3) == 0){
