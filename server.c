@@ -125,7 +125,7 @@ int main(void){
         // TODO: convert this whole file handling into a function later on
 
 
-        if (strncmp("GET", buff, 3) == 0){
+        if (strncmp("GET ", buff, 4) == 0){
             printf("Received a get request\n");
 
 
@@ -136,7 +136,6 @@ int main(void){
                 continue;
             }
 
-            fseek(file_d, 0, SEEK_END);
             if (fseek(file_d, 0, SEEK_END) != 0) {
                 perror("fseek");
                 fclose(file_d);
@@ -160,7 +159,7 @@ int main(void){
             snprintf(
                 response,
                 sizeof(response),
-                "HTTP/1.1 200 OK \r\n"
+                "HTTP/1.1 200 OK\r\n"
                 "Content-Type: text/html\r\n"
                 "Content-Length: %ld\r\n"
                 "\r\n",
@@ -178,8 +177,10 @@ int main(void){
                 if(send_all(new_fd, file_buffer, bytes_read) == -1){
                     perror("Send files");
                     close(new_fd);
-                    continue;
                 }
+            }
+            if (ferror(file_d)){
+                perror("file error");
             }
             printf("Responded to GET request\n");
             fclose(file_d);
