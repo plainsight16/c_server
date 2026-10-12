@@ -7,6 +7,7 @@
 
 #define PORT "8080"
 #define BACKLOG 20
+
 int main(void){
     //getaddrinfo
     //socket
@@ -36,6 +37,11 @@ int main(void){
         if (sock_fd == -1){
             continue;
         }
+        if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &yes,
+            sizeof(int)) == -1) {
+            perror("setsockopt");
+            exit(1);
+        }
         
         if (bind(sock_fd, p->ai_addr, p->ai_addrlen) == -1){
             close(sock_fd);
@@ -43,11 +49,12 @@ int main(void){
         }
         break;
     }
-    if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &yes,
-            sizeof(int)) == -1) {
-            perror("setsockopt");
-            exit(1);
-        }
+    if (p == NULL){
+        fprintf(stderr, "Failed to bind to any available addresses");
+        freeaddrinfo(servinfo);
+        exit(EXIT_FAILURE);
+    }
+    
     
     freeaddrinfo(servinfo);
 
@@ -113,13 +120,15 @@ int main(void){
             if(send(new_fd, response, strlen(response), 0) == -1){
                 perror("Send error: Intital response failed");
                 close(new_fd);
+                continue;
             }
-            char file_buffer[file_size + 1];
+            char file_buffer[4096];
             size_t bytes_read;
             while ((bytes_read = fread(file_buffer, 1, sizeof(file_buffer), file_d)) > 0){
                 if(send(new_fd, file_buffer, bytes_read, 0) == -1){
                     perror("Send errror: Error while sending the file over");
                     close(new_fd);
+                    continue;
                 }
             }
             printf("Responded to GET request\n");
