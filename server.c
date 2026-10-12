@@ -43,6 +43,7 @@ int main(void){
     //accept
     struct addrinfo hints, *servinfo, *p; // hints gives getaddrinfo what specs I would like in my servinfo struct
     // which begs the question, why not just have one then?
+
     struct sockaddr_storage their_addr;
     socklen_t addr_size;
     memset(&hints, 0, sizeof hints);
@@ -93,9 +94,10 @@ int main(void){
 
 
     
-    addr_size = sizeof their_addr;
+    
     while(1){
         printf("Waiting for request...\n");
+        addr_size = sizeof their_addr;
         new_fd = accept(sock_fd, (struct sockaddr *)&their_addr, &addr_size);
         if(new_fd == -1){
             perror("Accept");
@@ -108,6 +110,7 @@ int main(void){
 
         if (message_size < 0){
            perror("recv");
+           close(new_fd);
            continue; 
         }
         if (message_size == 0){
@@ -120,19 +123,38 @@ int main(void){
 
         // Dealing with File opening and using
         // TODO: convert this whole file handling into a function later on
-        FILE *file_d = fopen("index.html", "r");
-        if (file_d == NULL){
-            perror("file error");
-            close(new_fd);
-            continue;
-        }
 
-        fseek(file_d, 0, SEEK_END);
-        long file_size = ftell(file_d);
-        rewind(file_d); // to return the pointer file_d to the start of the file
 
         if (strncmp("GET", buff, 3) == 0){
             printf("Received a get request\n");
+
+
+            FILE *file_d = fopen("index.html", "r");
+            if (file_d == NULL){
+                perror("file error");
+                close(new_fd);
+                continue;
+            }
+
+            fseek(file_d, 0, SEEK_END);
+            if (fseek(file_d, 0, SEEK_END) != 0) {
+                perror("fseek");
+                fclose(file_d);
+                close(new_fd);
+                continue;
+            }
+
+            long file_size = ftell(file_d);
+            if (file_size < 0) {
+                perror("ftell");
+                fclose(file_d);
+                close(new_fd);
+                continue;
+            }
+
+            rewind(file_d); // to return the pointer file_d to the start of the file
+
+
             int sec_send_status;
             char response[256];
             snprintf(
@@ -145,25 +167,28 @@ int main(void){
                 file_size
             );
             if(send_all(new_fd, response, strlen(response)) == -1){
-                perror("Send error: Intital response failed");
+                perror("Send headers");
                 close(new_fd);
+                fclose(file_d);
                 continue;
             }
             char file_buffer[4096];
             size_t bytes_read;
             while ((bytes_read = fread(file_buffer, 1, sizeof(file_buffer), file_d)) > 0){
                 if(send_all(new_fd, file_buffer, bytes_read) == -1){
-                    perror("Send errror: Error while sending the file over");
+                    perror("Send files");
                     close(new_fd);
                     continue;
                 }
             }
             printf("Responded to GET request\n");
+            fclose(file_d);
         }
         else{
             printf("ignored, come back with a get request\n");
         }
         close(new_fd);
+        
         
     }
     close(sock_fd);
