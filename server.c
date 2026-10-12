@@ -67,12 +67,19 @@ int main(void){
         }
         // ------------ Receive intial GET MESSAGE ------------- //
 
-        int max_len = 1000;
-        char buff[max_len];
-        memset(buff, 0, max_len);
-        if (recv(new_fd, buff, max_len, 0) == -1){
-            perror("receive error");
+        char buff[1000]; // where did I get 1000 from? fix this.
+        int message_size = recv(new_fd, buff, sizeof(buff) - 1, 0);
+
+        if (message_size < 0){
+           perror("recv");
+           continue; 
         }
+        if (message_size == 0){
+            perror("recv");
+            close(new_fd);
+            continue;
+        }
+        buff[message_size] = '\0';
 
 
         // Dealing with File opening and using
