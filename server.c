@@ -7,7 +7,34 @@
 
 #define PORT "8080"
 #define BACKLOG 20
+#include <errno.h>
+#include <sys/socket.h>
 
+int send_all(int fd, const void *data, size_t len)
+{
+    const char *ptr = data;
+    size_t total_sent = 0;
+
+    while (total_sent < len) {
+        ssize_t n = send(fd, ptr + total_sent,
+                         len - total_sent, 0);
+
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+
+        if (n == 0) {
+            return -1;
+        }
+
+        total_sent += (size_t)n;
+    }
+
+    return 0;
+}
 int main(void){
     //getaddrinfo
     //socket
@@ -117,7 +144,7 @@ int main(void){
                 "\r\n",
                 file_size
             );
-            if(send(new_fd, response, strlen(response), 0) == -1){
+            if(send_all(new_fd, response, strlen(response)) == -1){
                 perror("Send error: Intital response failed");
                 close(new_fd);
                 continue;
@@ -125,7 +152,7 @@ int main(void){
             char file_buffer[4096];
             size_t bytes_read;
             while ((bytes_read = fread(file_buffer, 1, sizeof(file_buffer), file_d)) > 0){
-                if(send(new_fd, file_buffer, bytes_read, 0) == -1){
+                if(send_all(new_fd, file_buffer, bytes_read) == -1){
                     perror("Send errror: Error while sending the file over");
                     close(new_fd);
                     continue;
