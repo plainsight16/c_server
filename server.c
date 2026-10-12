@@ -65,42 +65,55 @@ int main(void){
             perror("Accept");
             continue;
         }
-        // Receive intial GET MESSAGE
+        // ------------ Receive intial GET MESSAGE ------------- //
+
         int max_len = 1000;
         char buff[max_len];
         memset(buff, 0, max_len);
-   
-        
-        int message_size = recv(new_fd, buff, max_len, 0);
-        if (message_size == -1){
+        if (recv(new_fd, buff, max_len, 0) == -1){
             perror("receive error");
         }
+
+
+        // Dealing with File opening and using
+        // TODO: convert this whole file handling into a function later on
         FILE *file_d = fopen("index.html", "r");
         if (file_d == NULL){
             perror("file error");
             close(new_fd);
             continue;
         }
-        char *response;
-        int sent_bytes;
+
+        fseek(file_d, 0, SEEK_END);
+        long file_size = ftell(file_d);
+        rewind(file_d); // to return the pointer file_d to the start of the file
+
         if (strncmp("GET", buff, 3) == 0){
             printf("Received a get request\n");
-            response = "HTTP/1.1 200 OK\r\n"
-            "Content-Type: text/html\r\n"
-            "\r\n";
-            int first_send_status, sec_send_status;
-            if ((first_send_status = send(new_fd, response, strlen(response), 0)) == -1){
-                perror("Send error");
+            int sec_send_status;
+            char response[256];
+            snprintf(
+                response,
+                sizeof(response),
+                "HTTP/1.1 200 OK \r\n"
+                "Content-Type: text/html\r\n"
+                "Content-Length: %ld\r\n"
+                "\r\n",
+                file_size
+            );
+            if(send(new_fd, response, strlen(response), 0) == -1){
+                perror("Send error: Intital response failed");
                 close(new_fd);
-            };
-
-            char c;
-            while ((c = getc(file_d)) != EOF){
-                if ((sec_send_status = send(new_fd, &c, 1, 0)) == -1){
-                    perror("Send error");
-                    close(new_fd);
-                };
             }
+            char file_buffer[file_size + 1];
+            size_t bytes_read;
+            while ((bytes_read = fread(file_buffer, 1, sizeof(file_buffer), file_d)) > 0){
+                if(send(new_fd, file_buffer, bytes_read, 0) == -1){
+                    perror("Send errror: Error while sending the file over");
+                    close(new_fd);
+                }
+            }
+            printf("Responded to GET request\n");
         }
         else{
             printf("ignored, come back with a get request\n");
