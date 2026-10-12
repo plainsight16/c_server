@@ -9,7 +9,7 @@
 #define BACKLOG 20
 #include <errno.h>
 #include <sys/socket.h>
-
+//      ----NETWORKING UTILITY-----
 int send_all(int fd, const void *data, size_t len)
 {
     const char *ptr = data;
@@ -35,67 +35,78 @@ int send_all(int fd, const void *data, size_t len)
 
     return 0;
 }
-int main(void){
+
+
+//    ----    Create Listener(server's socket) -------
+int create_listener(void){
+    //does the following
     //getaddrinfo
     //socket
     //bind
     //listen
-    //accept
+
     struct addrinfo hints, *servinfo, *p; // hints gives getaddrinfo what specs I would like in my servinfo struct
     // which begs the question, why not just have one then?
 
-    struct sockaddr_storage their_addr;
-    socklen_t addr_size;
+    int listener = -1;
+    int yes = 1;
+    
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = 0;
     hints.ai_flags = AI_PASSIVE; // use local host
     
-    int status;
-    int sock_fd, new_fd;
-    int yes = 1;
+    int status = getaddrinfo(NULL, PORT,  &hints, &servinfo);
+    
 
-    if ((status = getaddrinfo(NULL, PORT,  &hints, &servinfo)) != 0){
+    if (status != 0){
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
-        exit(1);
+        return -1;
     }
     for (p=servinfo; p != NULL; p = p->ai_next){
-        sock_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (sock_fd == -1){
+        int candidate = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (candidate == -1){
             continue;
         }
-        if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &yes,
+        if (setsockopt(candidate, SOL_SOCKET, SO_REUSEADDR, &yes,
             sizeof(int)) == -1) {
             perror("setsockopt");
-            exit(1);
-        }
-        
-        if (bind(sock_fd, p->ai_addr, p->ai_addrlen) == -1){
-            close(sock_fd);
+            close(candidate);
             continue;
         }
+        
+        if (bind(candidate, p->ai_addr, p->ai_addrlen) == -1){
+            close(candidate);
+            continue;
+        }
+        listener = candidate;
         break;
     }
-    if (p == NULL){
-        fprintf(stderr, "Failed to bind to any available addresses");
-        freeaddrinfo(servinfo);
-        exit(EXIT_FAILURE);
-    }
-    
-    
     freeaddrinfo(servinfo);
-
-    if(listen(sock_fd, BACKLOG) == - 1){
-        perror("listen");
-        close(sock_fd);
-        exit(1);
+    if (listener == -1){
+        fprintf(stderr, "Failed to bind to any available addresses");
+        return -1;
     }
+    
+    if(listen(listener, BACKLOG) == - 1){
+        perror("listen");
+        close(listener);
+        return -1;
+    }
+    return listener;
+}
 
+int main(void){
+    
+    int sock_fd = create_listener();
+    int new_fd;
 
     
     
     while(1){
+        struct sockaddr_storage their_addr;
+        socklen_t addr_size;
         printf("Waiting for request...\n");
         addr_size = sizeof their_addr;
         new_fd = accept(sock_fd, (struct sockaddr *)&their_addr, &addr_size);
