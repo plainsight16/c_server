@@ -13,7 +13,7 @@ int main(void){
     //bind
     //listen
     //accept
-    struct addrinfo hints, *servinfo; // hints gives getaddrinfo what specs I would like in my servinfo struct
+    struct addrinfo hints, *servinfo, *p; // hints gives getaddrinfo what specs I would like in my servinfo struct
     // which begs the question, why not just have one then?
     struct sockaddr_storage their_addr;
     socklen_t addr_size;
@@ -31,22 +31,24 @@ int main(void){
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
         exit(1);
     }
-    
-    sock_fd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
-    if (sock_fd == -1){
-        perror("Socket error");
-        exit(1);
+    for (p=servinfo; p != NULL; p = p->ai_next){
+        sock_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (sock_fd == -1){
+            continue;
+        }
+        
+        if (bind(sock_fd, p->ai_addr, p->ai_addrlen) == -1){
+            close(sock_fd);
+            continue;
+        }
+        break;
     }
     if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &yes,
-        sizeof(int)) == -1) {
-        perror("setsockopt");
-        exit(1);
-    }
-    if (bind(sock_fd, servinfo->ai_addr, servinfo->ai_addrlen) == -1){
-        close(sock_fd);
-        perror("Bind error");
-        exit(1);
-    }
+            sizeof(int)) == -1) {
+            perror("setsockopt");
+            exit(1);
+        }
+    
     freeaddrinfo(servinfo);
 
     if(listen(sock_fd, BACKLOG) == - 1){
