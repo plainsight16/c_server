@@ -4,14 +4,13 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/socket.h>
+#include <errno.h>
 
 #define PORT "8080"
 #define BACKLOG 20
-#include <errno.h>
-#include <sys/socket.h>
-//      ----NETWORKING UTILITY-----
-int send_all(int fd, const void *data, size_t len)
-{
+
+//------NETWORKING UTILITY-----
+int send_all(int fd, const void *data, size_t len){
     const char *ptr = data;
     size_t total_sent = 0;
 
@@ -36,8 +35,7 @@ int send_all(int fd, const void *data, size_t len)
     return 0;
 }
 
-
-//    ----    Create Listener(server's socket) -------
+//-------SERVER SETUP -------
 int create_listener(void){
     //does the following
     //getaddrinfo
@@ -97,112 +95,119 @@ int create_listener(void){
     return listener;
 }
 
-int main(void){
-    
-    int sock_fd = create_listener();
-    int new_fd;
+//-------HTTP RESPONSE---------
+int serve_index(int client_fd){
+    FILE *file_d = fopen("index.html", "r");
+    if (file_d == NULL){
+        perror("fopen");
+        return -1;
+    }
 
-    
-    
+    if (fseek(file_d, 0, SEEK_END) != 0) {
+        perror("fseek");
+        fclose(file_d);
+        return -1;
+    }
+
+    long file_size = ftell(file_d);
+    if (file_size < 0) {
+        perror("ftell");
+        fclose(file_d);
+        return -1;
+    }
+
+    rewind(file_d); // to return the pointer file_d to the start of the file
+
+    char response[256];
+    int header_len = snprintf(
+        response,
+        sizeof(response),
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: %ld\r\n"
+        "\r\n",
+        file_size
+    );
+    if (header_len < 0 ||
+        (size_t)header_len >= sizeof response) {
+        fprintf(stderr, "Failed to construct HTTP headers\n");
+        fclose(file_d);
+        return -1;
+    }
+    if(send_all(client_fd, response, strlen(response)) == -1){
+        perror("Send headers");
+        fclose(file_d);
+        return -1;
+    }
+    char file_buffer[4096];
+    size_t bytes_read;
+    int result = 0;
+    while ((bytes_read = fread(file_buffer, 1, sizeof(file_buffer), file_d)) > 0){
+        if(send_all(client_fd, file_buffer, bytes_read) == -1){
+            perror("Send files");
+            result = -1;
+            break;
+        }
+    }
+    if (ferror(file_d)){
+        perror("fread");
+        result = -1;
+    }
+    fclose(file_d);
+    return result;
+}
+
+// ---------REQUEST HANDLING -------
+void handle_client(int client_fd){
+    char buff[1000]; // where did I get 1000 from? fix this.
+    int message_size = recv(client_fd, buff, sizeof(buff) - 1, 0);
+
+    if (message_size < 0){
+        perror("recv");
+        return;
+    }
+    if (message_size == 0){
+        perror("recv");
+        return;
+    }
+    buff[message_size] = '\0';
+    if (strncmp("GET ", buff, 4) == 0){
+        printf("Received a get request\n");
+        if(serve_index(client_fd) == 0){
+            printf("Responded to GET request\n");
+        }
+    }
+    else{
+        printf("Unsupported request method\n");
+    }
+}
+
+
+
+
+
+int main(void){
+    int listener = create_listener();
+    if (listener == -1){
+        return EXIT_FAILURE;
+    }
+
     while(1){
-        struct sockaddr_storage their_addr;
-        socklen_t addr_size;
+        struct sockaddr_storage client_addr;
+        socklen_t addr_size = sizeof client_addr;
         printf("Waiting for request...\n");
-        addr_size = sizeof their_addr;
-        new_fd = accept(sock_fd, (struct sockaddr *)&their_addr, &addr_size);
-        if(new_fd == -1){
+
+        int client_fd = accept(listener, (struct sockaddr *)&client_addr, &addr_size);
+        if(client_fd == -1){
+            if(errno == EINTR){
+                continue;
+            }
             perror("Accept");
             continue;
         }
-        // ------------ Receive intial GET MESSAGE ------------- //
-
-        char buff[1000]; // where did I get 1000 from? fix this.
-        int message_size = recv(new_fd, buff, sizeof(buff) - 1, 0);
-
-        if (message_size < 0){
-           perror("recv");
-           close(new_fd);
-           continue; 
-        }
-        if (message_size == 0){
-            perror("recv");
-            close(new_fd);
-            continue;
-        }
-        buff[message_size] = '\0';
-
-
-        // Dealing with File opening and using
-        // TODO: convert this whole file handling into a function later on
-
-
-        if (strncmp("GET ", buff, 4) == 0){
-            printf("Received a get request\n");
-
-
-            FILE *file_d = fopen("index.html", "r");
-            if (file_d == NULL){
-                perror("file error");
-                close(new_fd);
-                continue;
-            }
-
-            if (fseek(file_d, 0, SEEK_END) != 0) {
-                perror("fseek");
-                fclose(file_d);
-                close(new_fd);
-                continue;
-            }
-
-            long file_size = ftell(file_d);
-            if (file_size < 0) {
-                perror("ftell");
-                fclose(file_d);
-                close(new_fd);
-                continue;
-            }
-
-            rewind(file_d); // to return the pointer file_d to the start of the file
-
-
-            int sec_send_status;
-            char response[256];
-            snprintf(
-                response,
-                sizeof(response),
-                "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/html\r\n"
-                "Content-Length: %ld\r\n"
-                "\r\n",
-                file_size
-            );
-            if(send_all(new_fd, response, strlen(response)) == -1){
-                perror("Send headers");
-                close(new_fd);
-                fclose(file_d);
-                continue;
-            }
-            char file_buffer[4096];
-            size_t bytes_read;
-            while ((bytes_read = fread(file_buffer, 1, sizeof(file_buffer), file_d)) > 0){
-                if(send_all(new_fd, file_buffer, bytes_read) == -1){
-                    perror("Send files");
-                    close(new_fd);
-                }
-            }
-            if (ferror(file_d)){
-                perror("file error");
-            }
-            printf("Responded to GET request\n");
-            fclose(file_d);
-        }
-        else{
-            printf("ignored, come back with a get request\n");
-        }
-        close(new_fd);
-        
-        
+        handle_client(client_fd);
+        close(client_fd);      
     }
-    close(sock_fd);
+    close(listener);
 
 }
